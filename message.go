@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/quickfixgo/quickfix/datadictionary"
@@ -356,6 +357,21 @@ func (m *Message) String() string {
 	}
 
 	return string(m.build())
+}
+
+func (m *Message) Debug() string {
+	var stringRaw []byte
+	if m.rawMessage != nil {
+		stringRaw = m.rawMessage.Bytes()
+	} else {
+		stringRaw = m.build()
+	}
+
+	debugStringRaw := fmt.Sprintf("%q", stringRaw)
+	readableMessage := strings.Replace(debugStringRaw, "\\x01", "|", -1)
+	msgType, _ := m.MsgType()
+
+	return fmt.Sprintf("%s: %s", msgType, readableMessage)
 }
 
 func formatCheckSum(value int) string {

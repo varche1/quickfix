@@ -40,7 +40,7 @@ Set{{ .Name }}(v enum.{{ .Name }}) {
 	{{ template "receiver" }}.Set(field.New{{ .Name }}(v))
 }
 {{- else if eq $qfix_type "FIXDecimal" -}}
-Set{{ .Name }}(value decimal.Decimal, scale int32) {
+Set{{ .Name }}(value fixed.Fixed, scale int32) {
 	{{ template "receiver" }}.Set(field.New{{ .Name }}(value, scale))
 }
 {{- else -}}
@@ -74,7 +74,7 @@ Get{{ .Name }}() (f field.{{ .Name }}Field, err quickfix.MessageRejectError) {
 {{- if and $ft.Enums (ne $bt "FIXBoolean") -}}
 Get{{ .Name }}() (v enum.{{ .Name }}, err quickfix.MessageRejectError) {
 {{- else if eq $bt "FIXDecimal" -}}
-Get{{ .Name }}() (v decimal.Decimal, err quickfix.MessageRejectError) {
+Get{{ .Name }}() (v fixed.Fixed, err quickfix.MessageRejectError) {
 {{- else -}}
 Get{{ .Name }}() (v {{ quickfixValueType $bt }}, err quickfix.MessageRejectError) {
 {{- end }}
@@ -311,7 +311,7 @@ import(
 	"github.com/quickfixgo/quickfix"
 	"{{ importRootPath }}/enum"
 	"{{ importRootPath }}/tag"
-{{ if checkIfDecimalImportRequiredForFields . }} "github.com/shopspring/decimal" {{ end }}
+{{ if checkIfDecimalImportRequiredForFields . }} "git.cryptology.com/lib/go/fixed" {{ end }}
 	"time"
 )
 
@@ -351,7 +351,7 @@ func New{{ .Name }}(val enum.{{ .Name }}) {{ .Name }}Field {
 }
 {{ else if eq $base_type "FIXDecimal" }}
 // New{{ .Name }} returns a new {{ .Name }}Field initialized with val and scale.
-func New{{ .Name }}(val decimal.Decimal, scale int32) {{ .Name }}Field {
+func New{{ .Name }}(val fixed.Fixed, scale int32) {{ .Name }}Field {
 	return {{ .Name }}Field{ quickfix.FIXDecimal{ Decimal: val, Scale: scale} }
 }
 {{ else }}
@@ -364,7 +364,7 @@ func New{{ .Name }}(val {{ quickfixValueType $base_type }}) {{ .Name }}Field {
 {{ if and  .Enums (ne $base_type "FIXBoolean") }}
 func (f {{ .Name }}Field) Value() enum.{{ .Name }} { return enum.{{ .Name }}(f.String()) }
 {{ else if eq $base_type "FIXDecimal" }}
-func (f {{ .Name }}Field) Value() (val decimal.Decimal) { return f.Decimal }
+func (f {{ .Name }}Field) Value() (val fixed.Fixed) { return f.Fixed }
 {{ else }}
 func (f {{ .Name }}Field) Value() ({{ quickfixValueType $base_type }}) {
 {{- if eq $base_type "FIXString" -}}

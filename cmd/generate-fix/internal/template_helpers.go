@@ -102,7 +102,7 @@ func collectExtraImports(m *datadictionary.MessageDef) (imports []string, err er
 	}
 
 	if decimalRequired {
-		imports = append(imports, "github.com/shopspring/decimal")
+		imports = append(imports, "git.cryptology.com/lib/go/fixed")
 	}
 
 	return
@@ -158,7 +158,7 @@ func quickfixValueType(quickfixType string) (goType string, err error) {
 	case "FIXFloat":
 		goType = "float64"
 	case "FIXDecimal":
-		goType = "decimal.Decimal"
+		goType = "fixed.Fixed"
 	default:
 		err = fmt.Errorf("Unknown QuickFIX Type: %v", quickfixType)
 	}

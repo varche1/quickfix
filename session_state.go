@@ -66,7 +66,7 @@ func (sm *stateMachine) Incoming(session *session, m fixIn) {
 		return
 	}
 
-	session.log.OnIncoming(m.bytes.Bytes())
+	//session.log.OnIncoming(m.bytes.Bytes())
 
 	msg := session.messagePool.Get()
 	if err := ParseMessageWithDataDictionary(msg, m.bytes, session.transportDataDictionary, session.appDataDictionary); err != nil {
@@ -74,6 +74,12 @@ func (sm *stateMachine) Incoming(session *session, m fixIn) {
 	} else {
 		msg.ReceiveTime = m.receiveTime
 		sm.fixMsgIn(session, msg)
+	}
+
+	// NOTE: too many market data messages. Skip it
+	msgType, _ := msg.Header.GetString(tagMsgType)
+	if msgType != "X" && msgType != "W" && msgType != "y" {
+		session.log.OnIncoming(m.bytes.Bytes())
 	}
 
 	if !msg.keepMessage {

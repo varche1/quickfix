@@ -6,26 +6,30 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"context"
 
 	"golang.org/x/net/proxy"
+	"golang.org/x/time/rate"
 )
 
 //Initiator initiates connections and processes messages for all sessions.
 type Initiator struct {
-	app             Application
-	settings        *Settings
-	sessionSettings map[SessionID]*SessionSettings
-	storeFactory    MessageStoreFactory
-	logFactory      LogFactory
-	globalLog       Log
-	stopChan        chan interface{}
-	wg              sync.WaitGroup
-	sessions        map[SessionID]*session
+	app                   Application
+	settings              *Settings
+	sessionSettings       map[SessionID]*SessionSettings
+	storeFactory          MessageStoreFactory
+	logFactory            LogFactory
+	globalLog             Log
+	stopChan              chan interface{}
+	wg                    sync.WaitGroup
+	sessions              map[SessionID]*session
+	connectionMu          *sync.Mutex
+	connectionRateLimiter *rate.Limiter
 	sessionFactory
 }
 
 //Start Initiator.
-func (i *Initiator) Start() (err error) {
+func (i *Initiator) Start(ctx context.Context) (err error) {
 	i.stopChan = make(chan interface{})
 
 	for sessionID, settings := range i.sessionSettings {
@@ -42,7 +46,7 @@ func (i *Initiator) Start() (err error) {
 
 		i.wg.Add(1)
 		go func(sessID SessionID) {
-			i.handleConnection(i.sessions[sessID], tlsConfig, dialer)
+			i.handleConnection(ctx, i.sessions[sessID], tlsConfig, dialer)
 			i.wg.Done()
 		}(sessionID)
 	}
@@ -63,15 +67,17 @@ func (i *Initiator) Stop() {
 }
 
 //NewInitiator creates and initializes a new Initiator.
-func NewInitiator(app Application, storeFactory MessageStoreFactory, appSettings *Settings, logFactory LogFactory) (*Initiator, error) {
+func NewInitiator(app Application, storeFactory MessageStoreFactory, appSettings *Settings, logFactory LogFactory, connectionMu *sync.Mutex, connectionRateLimiter *rate.Limiter) (*Initiator, error) {
 	i := &Initiator{
-		app:             app,
-		storeFactory:    storeFactory,
-		settings:        appSettings,
-		sessionSettings: appSettings.SessionSettings(),
-		logFactory:      logFactory,
-		sessions:        make(map[SessionID]*session),
-		sessionFactory:  sessionFactory{true},
+		app:                   app,
+		storeFactory:          storeFactory,
+		settings:              appSettings,
+		sessionSettings:       appSettings.SessionSettings(),
+		logFactory:            logFactory,
+		sessions:              make(map[SessionID]*session),
+		sessionFactory:        sessionFactory{true},
+		connectionMu:          connectionMu,
+		connectionRateLimiter: connectionRateLimiter,
 	}
 
 	var err error
@@ -120,7 +126,28 @@ func (i *Initiator) waitForReconnectInterval(reconnectInterval time.Duration) bo
 	return true
 }
 
-func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, dialer proxy.Dialer) {
+func (i *Initiator) handleConnection(ctx context.Context, session *session, tlsConfig *tls.Config, dialer proxy.Dialer) {
+	allowHandleConnection := make(chan struct{})
+	go func() {
+		session.log.OnEventf("Session %s: start waiting for connection lock", session.sessionID.String())
+		i.connectionMu.Lock()
+		session.log.OnEventf("Session %s: done waiting for connection lock", session.sessionID.String())
+
+		session.log.OnEventf("Session %s: start waiting for connection rate limit", session.sessionID.String())
+		i.connectionRateLimiter.Wait(context.Background())
+		session.log.OnEventf("Session %s: done waiting for connection rate limit", session.sessionID.String())
+
+		allowHandleConnection <- struct{}{}
+	}()
+
+	select {
+	case <-ctx.Done():
+		session.log.OnEventf("Session %s: stop waiting for connection handling alloing. Context is done", session.sessionID.String())
+		return
+	case <-allowHandleConnection:
+		session.log.OnEventf("Session %s: done waiting for connection handling alloing", session.sessionID.String())
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -145,7 +172,11 @@ func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, di
 		var msgOut chan []byte
 
 		address := session.SocketConnectAddress[connectionAttempt%len(session.SocketConnectAddress)]
-		session.log.OnEventf("Connecting to: %v", address)
+		////TODO:!
+		//if session.sessionID.SenderCompID == "EXС_ETH" {
+		//	time.Sleep(time.Second * 30)
+		//}
+		session.log.OnEventf("%s connecting to: %v", address, session.sessionID.String())
 
 		netConn, err := dialer.Dial("tcp", address)
 		if err != nil {

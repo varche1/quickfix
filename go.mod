@@ -10,4 +10,5 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381
+	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
 )
